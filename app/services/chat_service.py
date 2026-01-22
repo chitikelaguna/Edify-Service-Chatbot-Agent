@@ -3,9 +3,11 @@ from app.db.memory_repo import MemoryRepo
 from app.db.audit_repo import AuditRepo
 from app.db.chat_history_repo import ChatHistoryRepo
 from app.services.session_service import SessionService
+from app.core.config import settings
 from typing import Dict, Any, List
 import logging
 import time
+import asyncio
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +65,18 @@ class ChatService:
             }
             
             # 6. Invoke Graph (nodes will persist retrieved_context)
-            result = await graph.ainvoke(initial_state)
+            # Optional: Apply timeout if enabled
+            if settings.ENABLE_REQUEST_TIMEOUT:
+                try:
+                    result = await asyncio.wait_for(
+                        graph.ainvoke(initial_state),
+                        timeout=settings.REQUEST_TIMEOUT_SECONDS
+                    )
+                except asyncio.TimeoutError:
+                    logger.warning(f"Request timeout after {settings.REQUEST_TIMEOUT_SECONDS}s for session {session_id[:8]}...")
+                    raise Exception(f"Request timed out after {settings.REQUEST_TIMEOUT_SECONDS} seconds. Please try again.")
+            else:
+                result = await graph.ainvoke(initial_state)
             
             # 7. Extract Response
             bot_response = result.get("response", "I'm sorry, I couldn't generate a response.")

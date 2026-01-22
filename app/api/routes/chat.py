@@ -1,7 +1,8 @@
-from fastapi import APIRouter, HTTPException, Depends, status, Header
+from fastapi import APIRouter, HTTPException, Depends, status, Header, Request
 from pydantic import BaseModel
 from typing import List, Dict, Any, Optional
 from app.core.security import get_admin_token
+from app.core.config import settings
 from app.services.chat_service import ChatService
 from app.db.supabase import get_chatbot_supabase_client
 import logging
@@ -10,6 +11,21 @@ import uuid
 # Define Router
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+# Optional rate limiting decorator
+# Applied only if ENABLE_RATE_LIMITING=true and slowapi is installed
+def apply_rate_limit(func):
+    """Apply rate limiting decorator if enabled."""
+    if settings.ENABLE_RATE_LIMITING:
+        try:
+            # Import here to avoid errors if slowapi not installed
+            from slowapi import Limiter
+            from slowapi.util import get_remote_address
+            limiter = Limiter(key_func=get_remote_address)
+            return limiter.limit(f"{settings.RATE_LIMIT_PER_MINUTE}/minute")(func)
+        except ImportError:
+            pass
+    return func
 
 class ChatRequest(BaseModel):
     message: str
@@ -49,12 +65,15 @@ def get_or_create_session(session_id: str) -> Dict[str, Any]:
     return session_data
 
 @router.post("/message", response_model=ChatResponse)
+@apply_rate_limit
 async def chat_message(
     request: ChatRequest
 ):
     """
     Chat message endpoint with full persistence.
     All data is persisted to database including errors.
+    
+    Optional rate limiting is applied if ENABLE_RATE_LIMITING=true.
     """
     try:
         # Get or create session (no auth required)

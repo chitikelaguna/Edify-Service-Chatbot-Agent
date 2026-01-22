@@ -28,10 +28,14 @@ def check_context_node(state: AgentState) -> Dict[str, Any]:
         return {}
         
     if not context or (isinstance(context, list) and len(context) == 0):
-        # No data found - persist this event
+        # No data found - this should be rare for valid CRM/LMS/RMS/RAG intents
+        # Log this as it indicates a potential issue with data retrieval
+        query = state.get("user_message", "")
+        logger.warning(f"No data found for {source} query: {query[:100]}")
+        
+        # Persist this event for analysis
         try:
             context_repo = RetrievedContextRepo()
-            query = state.get("user_message", "")
             context_repo.save_context(
                 session_id=session_id or "unknown",
                 admin_id=admin_id,
@@ -49,14 +53,16 @@ def check_context_node(state: AgentState) -> Dict[str, Any]:
                 action="no_data_found",
                 details={
                     "source_type": source,
-                    "query": state.get("user_message", "")
+                    "query": query
                 },
                 session_id=session_id
             )
         except Exception as e:
             logger.error(f"Error persisting no-data-found event: {e}")
         
-        return {"response": "No relevant data found for your request.", "next_step": "end"}
+        # Return user-friendly message
+        # Note: With improved intent detection, this should rarely occur for valid CRM queries
+        return {"response": "I couldn't find any data matching your request. Please try rephrasing or check if the data exists in the system.", "next_step": "end"}
         
     # Data found, proceed to LLM
     return {}

@@ -1,5 +1,6 @@
 from typing import List, Dict, Optional
 from app.db.supabase import get_chatbot_supabase_client
+from app.utils.cache import get_cached, set_cached, cache_key_chat_history
 import logging
 import uuid
 
@@ -20,6 +21,7 @@ class MemoryRepo:
         """
         Retrieves recent chat history for a session.
         Converts chat_history pairs to LangGraph format (role + content).
+        Optional caching: Uses cache if enabled (non-breaking).
         
         Args:
             session_id: Session UUID
@@ -28,6 +30,13 @@ class MemoryRepo:
         Returns:
             List of messages in format [{"role": "admin", "content": "..."}, ...]
         """
+        # Optional: Try cache first (non-breaking if cache unavailable)
+        cache_key = cache_key_chat_history(session_id)
+        cached = get_cached(cache_key)
+        if cached is not None:
+            logger.debug(f"Cache hit for chat history: {session_id[:8]}...")
+            return cached
+        
         try:
             response = (
                 self.supabase.table(self.table)
@@ -55,6 +64,9 @@ class MemoryRepo:
                     "role": "assistant",
                     "content": pair["assistant_response"]
                 })
+            
+            # Optional: Cache the result (non-breaking if cache fails)
+            set_cached(cache_key, messages)
             
             logger.debug(f"Loaded {len(messages)} messages from chat_history for session {session_id[:8]}...")
             return messages

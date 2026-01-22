@@ -1,9 +1,10 @@
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from app.langgraph.state import AgentState
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
 from app.core.config import settings
 import logging
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -40,10 +41,116 @@ def get_greeting_response() -> str:
     """
     return "Hii 👋\nWhat's up? How can I help you today?"
 
+def normalize_input(text: str) -> str:
+    """
+    Normalizes user input for robust matching.
+    - Convert to lowercase
+    - Trim spaces
+    - Remove punctuation
+    - Normalize plural/singular
+    """
+    if not text:
+        return ""
+    
+    # Lowercase and trim
+    normalized = text.strip().lower()
+    
+    # Remove punctuation (keep spaces and alphanumeric)
+    normalized = re.sub(r'[^\w\s]', ' ', normalized)
+    
+    # Normalize plural/singular (simple approach)
+    # Remove trailing 's' for common words (leads -> lead, trainers -> trainer)
+    # But keep context-aware (e.g., "courses" -> "course")
+    words = normalized.split()
+    normalized_words = []
+    for word in words:
+        # Remove trailing 's' if word is longer than 3 chars (to avoid removing 'is', 'as', etc.)
+        if len(word) > 3 and word.endswith('s'):
+            normalized_words.append(word[:-1])
+        else:
+            normalized_words.append(word)
+    
+    return ' '.join(normalized_words)
+
+def detect_intent_keywords(query: str) -> Optional[str]:
+    """
+    Robust keyword-based intent detection (LENIENT approach).
+    Detects CRM/LMS/RMS/RAG intent using keyword matching.
+    Returns source type or None if unclear.
+    """
+    normalized = normalize_input(query)
+    
+    # CRM keywords (comprehensive list)
+    crm_keywords = [
+        # Leads
+        'lead', 'leads', 'prospect', 'prospects', 'enquiry', 'enquiry', 'inquiry', 'inquiries',
+        'customer lead', 'crm lead', 'crm leads',
+        # Trainers
+        'trainer', 'trainers', 'instructor', 'instructors',
+        # Learners
+        'learner', 'learners', 'student', 'students',
+        # Campaigns
+        'campaign', 'campaigns', 'marketing campaign',
+        # Tasks
+        'task', 'tasks', 'todo', 'todos',
+        # Activities
+        'activity', 'activities', 'log', 'logs',
+        # Notes
+        'note', 'notes', 'comment', 'comments',
+        # Courses (in CRM)
+        'course', 'courses', 'program', 'programs',
+        # Generic CRM
+        'crm', 'crm data', 'crm information'
+    ]
+    
+    # LMS keywords
+    lms_keywords = [
+        'batch', 'batches', 'training batch', 'lms batch', 'lms batches',
+        'batch schedule', 'batch schedules', 'lms'
+    ]
+    
+    # RMS keywords
+    rms_keywords = [
+        'candidate', 'candidates', 'recruitment', 'job', 'jobs',
+        'position', 'positions', 'rms', 'rms candidate', 'rms candidates'
+    ]
+    
+    # RAG keywords
+    rag_keywords = [
+        'policy', 'policies', 'document', 'documents', 'knowledge base',
+        'knowledge', 'guide', 'guides', 'manual', 'manuals', 'rag'
+    ]
+    
+    # Check for CRM keywords (most comprehensive)
+    for keyword in crm_keywords:
+        if re.search(rf'\b{re.escape(keyword)}\b', normalized):
+            logger.info(f"CRM intent detected via keyword: {keyword}")
+            return "crm"
+    
+    # Check for LMS keywords
+    for keyword in lms_keywords:
+        if re.search(rf'\b{re.escape(keyword)}\b', normalized):
+            logger.info(f"LMS intent detected via keyword: {keyword}")
+            return "lms"
+    
+    # Check for RMS keywords
+    for keyword in rms_keywords:
+        if re.search(rf'\b{re.escape(keyword)}\b', normalized):
+            logger.info(f"RMS intent detected via keyword: {keyword}")
+            return "rms"
+    
+    # Check for RAG keywords
+    for keyword in rag_keywords:
+        if re.search(rf'\b{re.escape(keyword)}\b', normalized):
+            logger.info(f"RAG intent detected via keyword: {keyword}")
+            return "rag"
+    
+    return None
+
 def decide_source_node(state: AgentState) -> Dict[str, Any]:
     """
     Decides which data source to query based on user_message.
-    Detects greetings first (no LLM call needed).
+    Uses LENIENT intent detection: keyword-based first, then LLM fallback.
     """
     try:
         user_message = state["user_message"]
@@ -56,16 +163,40 @@ def decide_source_node(state: AgentState) -> Dict[str, Any]:
                 "response": get_greeting_response()
             }
         
-        # Not a greeting, use LLM to classify
+        # STEP 1: Try robust keyword-based intent detection (LENIENT)
+        keyword_intent = detect_intent_keywords(user_message)
+        if keyword_intent:
+            logger.info(f"Intent detected via keywords: {keyword_intent}")
+            return {"source_type": keyword_intent}
+        
+        # STEP 2: Fallback to LLM for ambiguous cases
+        logger.info("No clear keyword match, using LLM for classification")
         llm = ChatOpenAI(api_key=settings.OPENAI_API_KEY, model="gpt-4o")
         
-        system_prompt = """You are a router. Classify the user's request.
+        system_prompt = """You are a router. Classify the user's request into the correct data source.
+
+        IMPORTANT: CRM contains ALL of these entities:
+        - Leads, Prospects, Customers
+        - Trainers, Instructors (NOT in LMS - they are in CRM)
+        - Learners, Students (NOT in LMS - they are in CRM)
+        - Campaigns, Marketing campaigns
+        - Tasks, Todos
+        - Activities, Activity logs
+        - Notes, Comments
+        - Courses (Course table is in CRM, not LMS)
+        
         Categories:
-        - "crm": Customer/Deal/Lead/Company data
-        - "lms": Course/Training/Instructor data
+        - "crm": All CRM data including Leads, Trainers, Learners, Campaigns, Tasks, Activities, Notes, Courses
+        - "lms": Training batches and batch schedules only (NOT trainers or learners - those are in CRM)
         - "rms": Candidate/Job/Recruitment data
         - "rag": Policy/Knowledge base/Documents
         - "general": Off-topic or unclear requests
+        
+        CRITICAL RULES:
+        1. Trainers/Instructors → ALWAYS "crm" (NOT "lms")
+        2. Learners/Students → ALWAYS "crm" (NOT "lms")
+        3. Courses → "crm" (Course table is in CRM)
+        4. Only training batches/schedules → "lms"
         
         Return ONLY the category name.
         """

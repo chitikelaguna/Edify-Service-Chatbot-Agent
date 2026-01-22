@@ -72,20 +72,22 @@ class CRMRepo:
     def _detect_table_intent(self, query: str) -> Optional[str]:
         """
         Detects which CRM table the user wants to query based on keywords.
-        Returns table key or None if ambiguous.
+        Uses LENIENT matching with synonyms and variations.
+        Returns table key or "leads" as default.
         """
         query_lower = query.lower()
         
-        # Table detection keywords (order matters - more specific first)
+        # Table detection keywords with comprehensive synonyms (LENIENT matching)
         table_keywords = {
-            "campaigns": ["campaign", "campaigns"],
-            "tasks": ["task", "tasks", "todo", "todos"],
-            "trainers": ["trainer", "trainers", "instructor", "instructors"],
-            "learners": ["learner", "learners", "student", "students"],
-            "Course": ["course", "courses", "program", "programs"],
-            "activity": ["activity", "activities", "log", "logs"],
-            "notes": ["note", "notes", "comment", "comments"],
-            "leads": ["lead", "leads", "prospect", "prospects"]
+            "campaigns": ["campaign", "campaigns", "marketing campaign", "marketing"],
+            "tasks": ["task", "tasks", "todo", "todos", "to-do", "to do"],
+            "trainers": ["trainer", "trainers", "instructor", "instructors", "teacher", "teachers"],
+            "learners": ["learner", "learners", "student", "students", "trainee", "trainees"],
+            "Course": ["course", "courses", "program", "programs", "curriculum", "curricula"],
+            "activity": ["activity", "activities", "log", "logs", "event", "events"],
+            "notes": ["note", "notes", "comment", "comments", "remark", "remarks"],
+            "leads": ["lead", "leads", "prospect", "prospects", "enquiry", "enquiries", 
+                     "inquiry", "inquiries", "customer lead", "potential customer"]
         }
         
         # Count matches for each table
@@ -153,27 +155,67 @@ class CRMRepo:
                 filters["start_date"] = today_start - timedelta(days=7)
                 filters["end_date"] = today_end
         
-        # Extract text query (remove common query words and date-related keywords)
-        text_query = query
-        # Remove common query words that don't represent actual search terms
-        query_words = [
-            'today', 'yesterday', 'this week', 'new', 
-            'show', 'shows', 'display', 'get', 'give', 'list', 'find', 'fetch',
-            'me', 'my', 'i', 'want', 'need', 'see', 'view',
-            'crm', 'data', 'details', 'information', 'info',
-            'all', 'the', 'a', 'an', 'some',
-            's', 'is', 'are', 'was', 'were',
-            'campaign', 'campaigns', 'lead', 'leads', 'task', 'tasks',
-            'trainer', 'trainers', 'learner', 'learners', 'course', 'courses',
-            'activity', 'activities', 'note', 'notes'
+        # STEP 3: Detect if this is a LIST/GET/SHOW query (should return all records)
+        # Patterns that indicate "get all" intent (LENIENT matching)
+        list_query_patterns = [
+            # "all [entity]" patterns
+            r'\ball\s+(?:the\s+)?(?:trainers?|leads?|campaigns?|tasks?|learners?|courses?|activities?|notes?)',
+            # "[entity] details/info/data" patterns
+            r'(?:trainers?|leads?|campaigns?|tasks?|learners?|courses?|activities?|notes?)\s+(?:details?|information|info|data)',
+            # "list [entity]" patterns
+            r'list\s+(?:out\s+)?(?:all\s+)?(?:the\s+)?(?:trainers?|leads?|campaigns?|tasks?|learners?|courses?|activities?|notes?)',
+            # "show [entity]" patterns
+            r'show\s+(?:me\s+)?(?:all\s+)?(?:the\s+)?(?:trainers?|leads?|campaigns?|tasks?|learners?|courses?|activities?|notes?)',
+            # "get [entity]" patterns
+            r'get\s+(?:all\s+)?(?:the\s+)?(?:trainers?|leads?|campaigns?|tasks?|learners?|courses?|activities?|notes?)',
+            # "give [entity]" patterns
+            r'give\s+(?:me\s+)?(?:all\s+)?(?:the\s+)?(?:trainers?|leads?|campaigns?|tasks?|learners?|courses?|activities?|notes?)',
+            # "display [entity]" patterns
+            r'display\s+(?:all\s+)?(?:the\s+)?(?:trainers?|leads?|campaigns?|tasks?|learners?|courses?|activities?|notes?)',
+            # Just entity name alone (e.g., "leads", "trainers")
+            r'^(?:trainers?|leads?|campaigns?|tasks?|learners?|courses?|activities?|notes?)$',
+            # "crm [entity]" or "[entity] in crm"
+            r'(?:crm\s+)?(?:trainers?|leads?|campaigns?|tasks?|learners?|courses?|activities?|notes?)(?:\s+in\s+crm)?',
+            # "crm data" or "crm information"
+            r'crm\s+(?:data|information|info)'
         ]
-        for keyword in query_words:
-            text_query = re.sub(rf'\b{keyword}\b', '', text_query, flags=re.IGNORECASE)
-        text_query = ' '.join(text_query.split())  # Clean up extra spaces
         
-        # Only use as text query if there's meaningful content left (more than 2 chars)
-        if text_query.strip() and len(text_query.strip()) > 2:
-            filters["text_query"] = text_query.strip()
+        is_list_query = any(re.search(pattern, query_lower) for pattern in list_query_patterns)
+        
+        # STEP 4: Extract text query ONLY if this is NOT a list query
+        # For list queries, we return all records without text filtering
+        if not is_list_query:
+            text_query = query
+            # Remove common query words that don't represent actual search terms
+            # This list is comprehensive to catch all variations
+            query_words = [
+                # Date keywords
+                'today', 'yesterday', 'this week', 'new', 'recent',
+                # Action verbs
+                'show', 'shows', 'display', 'get', 'give', 'list', 'find', 'fetch', 'search',
+                'see', 'view', 'tell', 'provide', 'return', 'bring',
+                # Pronouns and filler words
+                'me', 'my', 'i', 'want', 'need', 'please', 'can', 'could', 'would',
+                # System keywords
+                'crm', 'data', 'details', 'information', 'info', 'record', 'records',
+                # Articles and determiners
+                'all', 'the', 'a', 'an', 'some', 'any', 'every', 'each',
+                # Verb forms
+                's', 'is', 'are', 'was', 'were', 'have', 'has', 'had',
+                # Entity names (will be detected separately)
+                'campaign', 'campaigns', 'lead', 'leads', 'task', 'tasks',
+                'trainer', 'trainers', 'learner', 'learners', 'course', 'courses',
+                'activity', 'activities', 'note', 'notes',
+                # Common connectors
+                'out', 'of', 'in', 'from', 'with', 'for', 'to'
+            ]
+            for keyword in query_words:
+                text_query = re.sub(rf'\b{keyword}\b', '', text_query, flags=re.IGNORECASE)
+            text_query = ' '.join(text_query.split())  # Clean up extra spaces
+            
+            # Only use as text query if there's meaningful content left (more than 2 chars)
+            if text_query.strip() and len(text_query.strip()) > 2:
+                filters["text_query"] = text_query.strip()
         
         return filters
     
@@ -199,15 +241,30 @@ class CRMRepo:
             
             logger.info(f"Applied date filter on {date_field}: {start_iso} to {end_iso}")
         
-        # Apply text search if there's a text query
-        if filters["text_query"]:
-            # Build OR condition for all search fields
-            or_conditions = ",".join([f"{field}.ilike.%{filters['text_query']}%" for field in search_fields])
-            query_builder = query_builder.or_(or_conditions)
-            logger.info(f"Applied text search: {filters['text_query']}")
-        elif not (filters["start_date"] and filters["end_date"]):
-            # If no date filter and no text query, return all records (no filter)
-            logger.info("No specific search criteria - returning all records")
+        # STEP 5: Apply filters ONLY when clear and specific
+        # Default behavior: return all records if no specific filter
+        
+        # Apply text search ONLY if there's a meaningful text query (not a list query)
+        text_query_applied = False
+        if filters.get("text_query"):
+            # Validate text query is meaningful (not just leftover words)
+            text_query = filters["text_query"].strip()
+            # Only apply if it's longer than 2 chars and not a common word
+            common_words = {'out', 'the', 'all', 'me', 'my', 'i', 'a', 'an', 'is', 'are', 'was', 'were', 'in', 'of', 'for', 'to', 'with'}
+            if len(text_query) > 2 and text_query.lower() not in common_words:
+                # Build OR condition for all search fields
+                or_conditions = ",".join([f"{field}.ilike.%{text_query}%" for field in search_fields])
+                query_builder = query_builder.or_(or_conditions)
+                logger.info(f"Applied text search: {text_query}")
+                text_query_applied = True
+            else:
+                logger.info(f"Ignoring ambiguous text query: '{text_query}' - treating as list query")
+                # Clear the text query so we return all records
+                filters["text_query"] = None
+        
+        # If no date filter and no valid text query, return all records (DEFAULT BEHAVIOR)
+        if not (filters["start_date"] and filters["end_date"]) and not text_query_applied:
+            logger.info("No specific search criteria - returning all records (default behavior)")
         
         # Always order by order_field descending (newest first)
         query_builder = query_builder.order(order_field, desc=True)
@@ -216,6 +273,95 @@ class CRMRepo:
         response = query_builder.limit(limit).execute()
         
         return response.data if response.data else []
+    
+    def search_crm_paginated(
+        self, 
+        query: str, 
+        page: int = 1, 
+        page_size: Optional[int] = None
+    ) -> Dict[str, Any]:
+        """
+        NEW METHOD: Paginated CRM search (does not change existing search_crm).
+        Returns paginated results with metadata.
+        
+        Args:
+            query: Search query string
+            page: Page number (1-indexed)
+            page_size: Number of records per page (defaults to settings.DEFAULT_PAGE_SIZE)
+            
+        Returns:
+            Dict with keys: data, total, page, page_size, has_more
+        """
+        from app.core.config import settings
+        
+        if page < 1:
+            page = 1
+        if page_size is None:
+            page_size = settings.DEFAULT_PAGE_SIZE
+        if page_size > settings.MAX_PAGE_SIZE:
+            page_size = settings.MAX_PAGE_SIZE
+        
+        offset = (page - 1) * page_size
+        
+        try:
+            # Detect which table to query
+            table_key = self._detect_table_intent(query)
+            table_config = self.TABLE_CONFIGS[table_key]
+            
+            logger.info(f"Paginated search - table: {table_key}, page: {page}, page_size: {page_size}")
+            
+            # Parse filters
+            filters = self._parse_date_filters(query)
+            
+            # Build query with pagination
+            table_name = table_config["table"]
+            search_fields = table_config["search_fields"]
+            date_field = table_config["date_field"]
+            order_field = table_config["order_field"]
+            
+            query_builder = self.supabase.table(table_name).select("*", count="exact")
+            
+            # Apply filters (same logic as _build_query)
+            if filters["start_date"] and filters["end_date"]:
+                start_iso = filters["start_date"].isoformat()
+                end_iso = filters["end_date"].isoformat()
+                query_builder = query_builder.gte(date_field, start_iso)
+                query_builder = query_builder.lte(date_field, end_iso)
+            
+            text_query_applied = False
+            if filters.get("text_query"):
+                text_query = filters["text_query"].strip()
+                common_words = {'out', 'the', 'all', 'me', 'my', 'i', 'a', 'an', 'is', 'are', 'was', 'were', 'in', 'of', 'for', 'to', 'with'}
+                if len(text_query) > 2 and text_query.lower() not in common_words:
+                    or_conditions = ",".join([f"{field}.ilike.%{text_query}%" for field in search_fields])
+                    query_builder = query_builder.or_(or_conditions)
+                    text_query_applied = True
+            
+            # Apply pagination
+            query_builder = query_builder.order(order_field, desc=True)
+            response = query_builder.range(offset, offset + page_size - 1).execute()
+            
+            data = response.data if response.data else []
+            total = response.count if hasattr(response, 'count') and response.count is not None else len(data)
+            has_more = (offset + page_size) < total
+            
+            return {
+                "data": data,
+                "total": total,
+                "page": page,
+                "page_size": page_size,
+                "has_more": has_more
+            }
+            
+        except Exception as e:
+            logger.error(f"Error in paginated CRM search: {e}", exc_info=True)
+            return {
+                "data": [],
+                "total": 0,
+                "page": page,
+                "page_size": page_size,
+                "has_more": False
+            }
     
     def search_crm(self, query: str) -> List[Dict[str, Any]]:
         """

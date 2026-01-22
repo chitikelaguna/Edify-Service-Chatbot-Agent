@@ -4,12 +4,30 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+def _parse_bool(value: str, default: bool = False) -> bool:
+    """Parse boolean from environment variable."""
+    if not value:
+        return default
+    return value.lower() in ("true", "1", "yes", "on")
+
+def _parse_int(value: str, default: int) -> int:
+    """Parse integer from environment variable."""
+    if not value:
+        return default
+    try:
+        return int(value)
+    except ValueError:
+        return default
+
 class Settings(BaseModel):
     """
     Application settings loaded from environment variables.
     Supports dual Supabase configuration:
     - Edify Supabase: Read-only data source (CRM/LMS/RMS)
     - Chatbot Supabase: Read/write database (sessions/memory/RAG/audit)
+    
+    Optimization features are optional and can be enabled via environment variables.
+    All optimizations are non-breaking and disabled by default.
     """
     # OpenAI Configuration
     OPENAI_API_KEY: str
@@ -25,6 +43,38 @@ class Settings(BaseModel):
     # Environment Configuration
     ENV: str = "local"
     LOG_LEVEL: str = "INFO"
+    
+    # Optional Optimization Features (disabled by default)
+    # Rate Limiting
+    ENABLE_RATE_LIMITING: bool = False
+    RATE_LIMIT_PER_MINUTE: int = 10
+    RATE_LIMIT_PER_HOUR: int = 100
+    
+    # Caching (Redis)
+    ENABLE_CACHING: bool = False
+    REDIS_HOST: str = "localhost"
+    REDIS_PORT: int = 6379
+    REDIS_DB: int = 0
+    REDIS_PASSWORD: str = ""
+    CACHE_TTL_SECONDS: int = 300  # 5 minutes default
+    
+    # Connection Pooling
+    ENABLE_CONNECTION_POOLING: bool = False
+    MAX_CONNECTIONS: int = 100
+    
+    # Request Timeouts
+    ENABLE_REQUEST_TIMEOUT: bool = False
+    REQUEST_TIMEOUT_SECONDS: int = 30
+    
+    # CORS Configuration
+    CORS_ALLOW_ORIGINS: str = "*"  # Comma-separated list or "*" for all
+    
+    # Response Compression
+    ENABLE_COMPRESSION: bool = False
+    
+    # Pagination
+    DEFAULT_PAGE_SIZE: int = 50
+    MAX_PAGE_SIZE: int = 200
 
 settings = Settings(
     OPENAI_API_KEY=os.getenv("OPENAI_API_KEY", ""),
@@ -34,4 +84,22 @@ settings = Settings(
     CHATBOT_SUPABASE_SERVICE_ROLE_KEY=os.getenv("CHATBOT_SUPABASE_SERVICE_ROLE_KEY", ""),
     ENV=os.getenv("ENV", "local"),
     LOG_LEVEL=os.getenv("LOG_LEVEL", "INFO"),
+    # Optional optimizations (disabled by default)
+    ENABLE_RATE_LIMITING=_parse_bool(os.getenv("ENABLE_RATE_LIMITING", "false")),
+    RATE_LIMIT_PER_MINUTE=_parse_int(os.getenv("RATE_LIMIT_PER_MINUTE", "10"), 10),
+    RATE_LIMIT_PER_HOUR=_parse_int(os.getenv("RATE_LIMIT_PER_HOUR", "100"), 100),
+    ENABLE_CACHING=_parse_bool(os.getenv("ENABLE_CACHING", "false")),
+    REDIS_HOST=os.getenv("REDIS_HOST", "localhost"),
+    REDIS_PORT=_parse_int(os.getenv("REDIS_PORT", "6379"), 6379),
+    REDIS_DB=_parse_int(os.getenv("REDIS_DB", "0"), 0),
+    REDIS_PASSWORD=os.getenv("REDIS_PASSWORD", ""),
+    CACHE_TTL_SECONDS=_parse_int(os.getenv("CACHE_TTL_SECONDS", "300"), 300),
+    ENABLE_CONNECTION_POOLING=_parse_bool(os.getenv("ENABLE_CONNECTION_POOLING", "false")),
+    MAX_CONNECTIONS=_parse_int(os.getenv("MAX_CONNECTIONS", "100"), 100),
+    ENABLE_REQUEST_TIMEOUT=_parse_bool(os.getenv("ENABLE_REQUEST_TIMEOUT", "false")),
+    REQUEST_TIMEOUT_SECONDS=_parse_int(os.getenv("REQUEST_TIMEOUT_SECONDS", "30"), 30),
+    CORS_ALLOW_ORIGINS=os.getenv("CORS_ALLOW_ORIGINS", "*"),
+    ENABLE_COMPRESSION=_parse_bool(os.getenv("ENABLE_COMPRESSION", "false")),
+    DEFAULT_PAGE_SIZE=_parse_int(os.getenv("DEFAULT_PAGE_SIZE", "50"), 50),
+    MAX_PAGE_SIZE=_parse_int(os.getenv("MAX_PAGE_SIZE", "200"), 200),
 )
