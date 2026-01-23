@@ -26,7 +26,7 @@ workflow.add_node("fetch_rms", fetch_rms_node)
 workflow.add_node("fetch_rag", fetch_rag_node)
 workflow.add_node("check_context", check_context_node)
 workflow.add_node("call_llm", call_llm_node)
-workflow.add_node("fallback", fallback_node)
+# workflow.add_node("fallback", fallback_node)
 workflow.add_node("save_memory", save_memory_node)
 
 # Set Entry Point
@@ -105,11 +105,8 @@ workflow.add_conditional_edges(
 # Edge: Call LLM -> Save Memory
 workflow.add_edge("call_llm", "save_memory")
 
-# Fallback might be reached via exceptions if we wired it, 
-# but currently we don't have explicit routing to fallback in the above logic 
-# (error handling is mostly inline returning 'response').
-# But if we did want to use fallback:
-workflow.add_edge("fallback", "save_memory")
+# Fallback node removed as it was unreachable
+# workflow.add_edge("fallback", "save_memory")
 
 # Edge: Save Memory -> END
 workflow.add_edge("save_memory", END)
