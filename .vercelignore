@@ -27,8 +27,8 @@ ENV/
 htmlcov/
 *.cover
 
-# Static files (not needed for backend)
-static/
+# Static files - included because FastAPI serves them
+# static/
 
 # Scripts (not needed in production)
 scripts/

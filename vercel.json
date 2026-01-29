@@ -16,9 +16,6 @@
     "api/index.py": {
       "runtime": "python3.11"
     }
-  },
-  "env": {
-    "PYTHON_VERSION": "3.11"
   }
 }
 
