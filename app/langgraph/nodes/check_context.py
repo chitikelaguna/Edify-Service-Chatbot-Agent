@@ -2,6 +2,7 @@ from typing import Dict, Any
 from app.langgraph.state import AgentState
 from app.db.retrieved_context_repo import RetrievedContextRepo
 from app.db.audit_repo import AuditRepo
+from app.langgraph.nodes.decide_source import is_greeting
 import logging
 
 logger = logging.getLogger(__name__)
@@ -16,6 +17,7 @@ def check_context_node(state: AgentState) -> Dict[str, Any]:
     source = state.get("source_type", "general")
     session_id = state.get("session_id")
     admin_id = state.get("admin_id", "anonymous")
+    user_message = state.get("user_message", "")
     
     # If response already set (e.g., greeting), skip data checks
     if state.get("response"):
@@ -23,8 +25,18 @@ def check_context_node(state: AgentState) -> Dict[str, Any]:
         # Greetings are handled by audit_logs if needed
         return {}
     
-    # If general or none, we don't need context
-    if source == "general" or source == "none":
+    # HARD GATE: Block "general" queries that are not greetings
+    if source == "general":
+        if not is_greeting(user_message):
+            logger.warning(f"Blocked general knowledge query: {user_message[:100]}")
+            return {
+                "response": "I can only answer questions related to Edify CRM, LMS, RMS, or internal documents."
+            }
+        # If it's a greeting, allow it to pass (greetings are handled by decide_source)
+        return {}
+    
+    # If none, we don't need context (greetings set source_type="none")
+    if source == "none":
         return {}
         
     if not context or (isinstance(context, list) and len(context) == 0):

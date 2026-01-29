@@ -11,7 +11,6 @@ from app.langgraph.nodes.fetch_rms import fetch_rms_node
 from app.langgraph.nodes.fetch_rag import fetch_rag_node
 from app.langgraph.nodes.check_context import check_context_node
 from app.langgraph.nodes.call_llm import call_llm_node
-from app.langgraph.nodes.fallback import fallback_node
 from app.langgraph.nodes.save_memory import save_memory_node
 
 workflow = StateGraph(AgentState)
@@ -26,7 +25,6 @@ workflow.add_node("fetch_rms", fetch_rms_node)
 workflow.add_node("fetch_rag", fetch_rag_node)
 workflow.add_node("check_context", check_context_node)
 workflow.add_node("call_llm", call_llm_node)
-workflow.add_node("fallback", fallback_node)
 workflow.add_node("save_memory", save_memory_node)
 
 # Set Entry Point
@@ -87,7 +85,7 @@ workflow.add_edge("fetch_lms", "check_context")
 workflow.add_edge("fetch_rms", "check_context")
 workflow.add_edge("fetch_rag", "check_context")
 
-# Edge: Check Context -> Call LLM or Fallback (or Save Memory if empty)
+# Edge: Check Context -> Call LLM or Save Memory (if empty/error)
 def route_after_check(state: AgentState):
     if state.get("response"): # "No data found" or error set by check_context
         return "save_memory"
@@ -104,12 +102,6 @@ workflow.add_conditional_edges(
 
 # Edge: Call LLM -> Save Memory
 workflow.add_edge("call_llm", "save_memory")
-
-# Fallback might be reached via exceptions if we wired it, 
-# but currently we don't have explicit routing to fallback in the above logic 
-# (error handling is mostly inline returning 'response').
-# But if we did want to use fallback:
-workflow.add_edge("fallback", "save_memory")
 
 # Edge: Save Memory -> END
 workflow.add_edge("save_memory", END)

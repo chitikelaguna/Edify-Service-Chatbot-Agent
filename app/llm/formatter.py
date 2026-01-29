@@ -95,6 +95,20 @@ class ResponseFormatter:
         Formats the retrieved context into a polite response.
         """
         try:
+            # SAFETY BACKSTOP: Block "general" queries without context
+            if source == "general":
+                is_context_empty = (
+                    context is None or 
+                    (isinstance(context, list) and len(context) == 0) or
+                    (isinstance(context, dict) and len(context) == 0)
+                )
+                if is_context_empty:
+                    # Check if it's a greeting (greetings are allowed)
+                    from app.langgraph.nodes.decide_source import is_greeting
+                    if not is_greeting(query):
+                        logger.warning(f"ResponseFormatter blocked general query without context: {query[:100]}")
+                        return "I can only answer questions related to Edify CRM, LMS, RMS, or internal documents."
+            
             if not context and source != "general":
                 return "I searched the records but found no matching data for your request."
 
