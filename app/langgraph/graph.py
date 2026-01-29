@@ -11,7 +11,6 @@ from app.langgraph.nodes.fetch_rms import fetch_rms_node
 from app.langgraph.nodes.fetch_rag import fetch_rag_node
 from app.langgraph.nodes.check_context import check_context_node
 from app.langgraph.nodes.call_llm import call_llm_node
-from app.langgraph.nodes.fallback import fallback_node
 from app.langgraph.nodes.save_memory import save_memory_node
 
 workflow = StateGraph(AgentState)
@@ -87,7 +86,7 @@ workflow.add_edge("fetch_lms", "check_context")
 workflow.add_edge("fetch_rms", "check_context")
 workflow.add_edge("fetch_rag", "check_context")
 
-# Edge: Check Context -> Call LLM or Fallback (or Save Memory if empty)
+# Edge: Check Context -> Call LLM or Save Memory (if empty/error)
 def route_after_check(state: AgentState):
     if state.get("response"): # "No data found" or error set by check_context
         return "save_memory"

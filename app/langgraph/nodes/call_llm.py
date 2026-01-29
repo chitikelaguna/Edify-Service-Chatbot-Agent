@@ -22,6 +22,23 @@ def call_llm_node(state: AgentState) -> Dict[str, Any]:
         if state.get("response"):
             return {}
 
+        # CONTEXT REQUIREMENT: LLM must have Edify context (except greetings handled by decide_source)
+        # Check if context is None or empty
+        is_context_empty = (
+            context is None or 
+            (isinstance(context, list) and len(context) == 0) or
+            (isinstance(context, dict) and len(context) == 0)
+        )
+        
+        # If no context and not a greeting, reject
+        if is_context_empty:
+            from app.langgraph.nodes.decide_source import is_greeting
+            if not is_greeting(query):
+                logger.warning(f"Blocked LLM call without context for query: {query[:100]}")
+                return {
+                    "response": "I can only answer questions related to Edify CRM, LMS, RMS, or internal documents."
+                }
+
         formatter = ResponseFormatter()
         response = formatter.format_response(query, context, source)
         

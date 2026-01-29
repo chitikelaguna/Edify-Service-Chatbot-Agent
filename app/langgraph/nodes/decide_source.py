@@ -5,6 +5,8 @@ from langchain_openai import ChatOpenAI
 from app.core.config import settings
 import logging
 import re
+import httpx
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -175,7 +177,22 @@ def decide_source_node(state: AgentState) -> Dict[str, Any]:
         
         # STEP 2: Fallback to LLM for ambiguous cases
         logger.info("No clear keyword match, using LLM for classification")
-        llm = ChatOpenAI(api_key=settings.OPENAI_API_KEY, model="gpt-4o")
+        # Remove proxy env vars before creating httpx client to prevent OpenAI from reading them
+        saved_proxy_vars = {}
+        proxy_vars = ['HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy', 'ALL_PROXY', 'all_proxy']
+        for var in proxy_vars:
+            if var in os.environ:
+                saved_proxy_vars[var] = os.environ.pop(var)
+        
+        try:
+            http_client = httpx.Client()
+            llm = ChatOpenAI(
+                api_key=settings.OPENAI_API_KEY,
+                model="gpt-4o",
+                http_client=http_client
+            )
+        finally:
+            os.environ.update(saved_proxy_vars)
         
         system_prompt = """You are a router. Classify the user's request into the correct data source.
 

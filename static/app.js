@@ -164,9 +164,9 @@ function showWelcomeGuide() {
 </div>
 <strong>Example questions:</strong>
 <ul>
-    <li>How many active LMS batches are there?</li>
-    <li>Show today's new CRM leads</li>
-    <li>How many candidates are in interview stage?</li>
+    <li>list out all the learners</li>
+    <li>how many leads are there in crm</li>
+    <li>list out all campaigns</li>
     <li>What does the onboarding document say about batch creation?</li>
 </ul>
 <div class="note-box">
