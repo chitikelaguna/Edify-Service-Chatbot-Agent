@@ -9,8 +9,10 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app.main import app
+from mangum import Mangum
 
-# Vercel expects the handler to be the ASGI application
-# FastAPI is an ASGI application, so we can export it directly
-handler = app
+# Wrap FastAPI app for Vercel / serverless compatibility
+# Mangum prevents Vercel's handler from inspecting FastAPI MRO directly,
+# avoiding the issubclass() TypeError crash
+handler = Mangum(app, lifespan="off")
 
