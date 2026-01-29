@@ -16,13 +16,22 @@ app = FastAPI(
     version="1.0.0",
 )
 
-# Configure CORS (optional: configurable origins)
-cors_origins = ["*"]
+# Configure CORS (environment-aware: restrictive in production, permissive in development)
 if settings.CORS_ALLOW_ORIGINS != "*":
-    cors_origins = [origin.strip() for origin in settings.CORS_ALLOW_ORIGINS.split(",")]
+    # Explicit origins configured
+    cors_origins = [origin.strip() for origin in settings.CORS_ALLOW_ORIGINS.split(",") if origin.strip()]
     logger.info(f"CORS configured for origins: {cors_origins}")
+elif settings.ENV in ("local", "development", "dev"):
+    # Development: allow all origins (convenient for local testing)
+    cors_origins = ["*"]
+    logger.info("CORS allows all origins (development mode)")
 else:
-    logger.warning("CORS allows all origins - consider restricting in production")
+    # Production/staging: warn if allowing all origins
+    cors_origins = ["*"]
+    logger.warning(
+        f"CORS allows all origins in {settings.ENV} environment - "
+        "consider restricting by setting CORS_ALLOW_ORIGINS environment variable"
+    )
 
 app.add_middleware(
     CORSMiddleware,
