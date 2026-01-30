@@ -1,40 +1,25 @@
-# ABSOLUTE MINIMAL HANDLER: Only function definition
-# Vercel's inspection happens at import - this file has minimal surface area
+import sys
+import os
 
-def handler(event, context):
+# Setup Python path at module level (safe - no complex MRO)
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+# Import Mangum at module level (safe - simple MRO)
+from mangum import Mangum
+
+def _create_handler():
     """
-    Vercel serverless function handler.
-    All imports happen inside function to avoid Vercel's MRO inspection.
+    Factory function to create Mangum handler.
+    FastAPI import happens HERE, not at module level.
+    This prevents Vercel from inspecting FastAPI's MRO during module import.
     """
-    # Cache handler on function object (no module-level state)
-    if not hasattr(handler, '_cached'):
-        import sys
-        import os
-        
-        # Setup Python path
-        _current_file = os.path.abspath(__file__)
-        _root = os.path.dirname(os.path.dirname(_current_file))
-        if _root not in sys.path:
-            sys.path.insert(0, _root)
-        
-        # Lazy import with error handling
-        try:
-            from mangum import Mangum
-            from app.main import app
-            handler._cached = Mangum(app, lifespan="off")
-        except Exception as e:
-            # Return error response if initialization fails
-            return {
-                'statusCode': 500,
-                'body': f'Handler initialization failed: {str(e)}'
-            }
-    
-    # Execute handler
-    try:
-        return handler._cached(event, context)
-    except Exception as e:
-        return {
-            'statusCode': 500,
-            'body': f'Handler execution failed: {str(e)}'
-        }
+    from app.main import app
+    return Mangum(app, lifespan="off")
+
+# Create handler at module level
+# Vercel inspects this - it sees only Mangum, not FastAPI's MRO
+handler = _create_handler()
+
+# Validation: Verify handler type (visible in Vercel build logs)
+print("HANDLER TYPE:", type(handler))
 
