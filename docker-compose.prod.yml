@@ -1,0 +1,42 @@
+version: '3.8'
+
+services:
+  chatbot:
+    build: .
+    container_name: edify-chatbot
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - PORT=8080
+    # Port not exposed to host - Nginx will proxy
+    # ports:
+    #   - "8080:8080"
+    networks:
+      - chatbot-network
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request, os; port=os.getenv('PORT', '8080'); urllib.request.urlopen(f'http://localhost:{port}/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    # Resource limits (adjust based on your server capacity)
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '1'
+          memory: 1G
+    # Logging configuration
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  chatbot-network:
+    driver: bridge
+

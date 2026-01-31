@@ -657,7 +657,9 @@ Health check endpoint.
 
 ## 🚢 Deployment
 
-### Docker Deployment
+> **📖 For detailed step-by-step deployment instructions with domain and SSL setup, see [DEPLOYMENT.md](DEPLOYMENT.md)**
+
+### Quick Start - Docker Deployment
 
 The application is containerized and ready for deployment using Docker.
 
