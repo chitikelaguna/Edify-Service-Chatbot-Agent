@@ -5,7 +5,6 @@ from langchain_openai import ChatOpenAI
 from app.core.config import settings
 import logging
 import re
-import httpx
 import os
 
 logger = logging.getLogger(__name__)
@@ -177,7 +176,8 @@ def decide_source_node(state: AgentState) -> Dict[str, Any]:
         
         # STEP 2: Fallback to LLM for ambiguous cases
         logger.info("No clear keyword match, using LLM for classification")
-        # Remove proxy env vars before creating httpx client to prevent OpenAI from reading them
+        # Temporarily remove proxy env vars to prevent OpenAI client from reading them
+        # The newer OpenAI client doesn't support proxies parameter
         saved_proxy_vars = {}
         proxy_vars = ['HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy', 'ALL_PROXY', 'all_proxy']
         for var in proxy_vars:
@@ -185,13 +185,13 @@ def decide_source_node(state: AgentState) -> Dict[str, Any]:
                 saved_proxy_vars[var] = os.environ.pop(var)
         
         try:
-            http_client = httpx.Client()
+            # Create ChatOpenAI without proxies - LangChain handles HTTP internally
             llm = ChatOpenAI(
                 api_key=settings.OPENAI_API_KEY,
-                model="gpt-4o",
-                http_client=http_client
+                model="gpt-4o"
             )
         finally:
+            # Restore proxy env vars
             os.environ.update(saved_proxy_vars)
         
         system_prompt = """You are a router. Classify the user's request into the correct data source.

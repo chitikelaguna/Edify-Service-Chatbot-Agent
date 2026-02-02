@@ -4,7 +4,6 @@ from app.core.config import settings
 from app.utils.cache import get_cached, set_cached
 import logging
 import hashlib
-import httpx
 import os
 
 logger = logging.getLogger(__name__)
@@ -12,8 +11,8 @@ logger = logging.getLogger(__name__)
 
 class OpenAIClient:
     def __init__(self):
-        # Remove proxy env vars before creating httpx client to prevent OpenAI from reading them
-        # This prevents the 'proxies' parameter error with openai>=1.10.0
+        # Temporarily remove proxy env vars to prevent OpenAI client from reading them
+        # The newer OpenAI client doesn't support proxies parameter
         saved_proxy_vars = {}
         proxy_vars = ['HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy', 'ALL_PROXY', 'all_proxy']
         for var in proxy_vars:
@@ -21,13 +20,11 @@ class OpenAIClient:
                 saved_proxy_vars[var] = os.environ.pop(var)
         
         try:
-            # Create httpx client - it won't read proxy env vars since we removed them
-            http_client = httpx.Client()
+            # Create ChatOpenAI without proxies - LangChain handles HTTP internally
             self.llm = ChatOpenAI(
                 api_key=settings.OPENAI_API_KEY,
                 model="gpt-4o",
-                temperature=0,  # Deterministic for formatting
-                http_client=http_client
+                temperature=0  # Deterministic for formatting
             )
         finally:
             # Restore proxy env vars
